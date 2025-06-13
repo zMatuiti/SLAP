@@ -2,7 +2,7 @@ import pandas as pd
 import numpy as np
 
 class Almacen:
-    def __init__(self, archivo_datos, ancho_almacen=20, alto_almacen=10, num_productos_populares=50):
+    def __init__(self, archivo_datos, ancho_almacen=10, alto_almacen=10, num_productos_populares=50):
         print("Iniciando la creacion del modelo de almacen...")
         
         # estructura fisica del almacen
@@ -23,7 +23,7 @@ class Almacen:
         print(f"Se crearon {len(self.ordenes_simulacion)} ordenes de simulacion para las pruebas.")
 
     def _cargar_y_procesar_demanda(self, filepath, num_productos):
-        # carga el archivo CSV, lo limpia y calcula la frecuencia (demanda) de cada producto.
+        # carga el archivo CSV, lo limpia y calcula la frecuencia (demanda) de cada producto
         print(f"\nCargando datos desde: {filepath}...")
         df = pd.read_csv(filepath)
         
@@ -40,8 +40,8 @@ class Almacen:
         return frecuencia_productos.head(num_productos)
 
     def _crear_ordenes_de_simulacion(self):
-        # se crea una lista de ordenes de ejemplo usando los productos mas populares.
-        # cada orden es una lista de IDs de productos.
+        # se crea una lista de ordenes de ejemplo usando los productos mas populares
+        # cada orden es una lista de IDs de productos
         ordenes = []
         productos_populares = self.datos_demanda.index.tolist()
         
@@ -52,20 +52,20 @@ class Almacen:
         return ordenes
 
     def _calcular_distancia_manhattan(self, punto1, punto2):
-        # se calcula la distancia de Manhattan, ideal para un layout de almacen en cuadricula.
+        # se calcula la distancia de Manhattan, ideal para un layout de almacen en cuadricula
         return abs(punto1[0] - punto2[0]) + abs(punto1[1] - punto2[1])
 
     def asignar_producto(self, producto_id, coordenadas):
-        # asigna o reasigna un producto a una nueva ubicacion en el almacen.
-        # esta seria una 'accion' de nuestro agente DQN.
+        # asigna o reasigna un producto a una nueva ubicacion en el almacen
+        # esta seria una 'accion' de nuestro agente DQN
         if 0 <= coordenadas[0] < self.ancho and 0 <= coordenadas[1] < self.alto:
             self.ubicaciones[producto_id] = coordenadas
         else:
             print(f"Error: Coordenadas {coordenadas} fuera de los limites del almacen.")
 
     def calcular_costo_total_simulacion(self):
-        # calcula la distancia total de picking para todas las ordenes de simulacion.
-        # este es el valor que queremos minimizar.
+        # calcula la distancia total de picking para todas las ordenes de simulacion
+        # este es el valor que queremos minimizar
         
         distancia_total = 0
         if not self.ubicaciones:
