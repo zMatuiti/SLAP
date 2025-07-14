@@ -48,6 +48,7 @@ class DQNAgent:
         
         def dueling_q_formula(args):
             v_stream, a_stream = args
+            # Fórmula: Q = V + (A - mean(A))
             return v_stream + (a_stream - tf.reduce_mean(a_stream, axis=1, keepdims=True))
 
         q_values = Lambda(dueling_q_formula, output_shape=(self.action_size,))([value, advantage])
@@ -64,6 +65,7 @@ class DQNAgent:
 
     def act(self, state, invalid_actions_mask):
         if np.random.rand() <= self.epsilon:
+            # para la exploración aleatoria, también debemos evitar acciones inválidas
             valid_actions = np.where(invalid_actions_mask == False)[0]
             if len(valid_actions) == 0:
                 # si no hay acciones validas, devuelve una accion aleatoria
@@ -165,7 +167,9 @@ def train_dqn(almacen, episodios=100, batch_size=32):
         if len(agent.memory) > batch_size:
             agent.replay(batch_size)
         
-        agent.update_target_model()
+        if e % 10 == 0: # Actualizar el target model cada 10 episodios
+            agent.update_target_model()
+            
         agent.decay_epsilon()
         
         print(f"Episodio {e+1}/{episodios} | Costo Total: {costo_total:.2f} | Epsilon: {agent.epsilon:.2f}")
@@ -177,6 +181,7 @@ def train_dqn(almacen, episodios=100, batch_size=32):
     
     asignacion_final = {}
     productos_finales = list(agente_entrenado.productos_a_colocar)
+    productos_finales.sort() # Ordenar para una evaluación consistente
     ultima_pos = (0, 0, 0)
 
     for producto in productos_finales:
@@ -184,7 +189,7 @@ def train_dqn(almacen, episodios=100, batch_size=32):
         prod_one_hot = tf.keras.utils.to_categorical(prod_idx, num_classes=agent.num_productos)
         estado = np.concatenate([prod_one_hot, np.array(ultima_pos)])
         
-        # creaa la mascara para la asignacion final
+        # crea la mascara para la asignacion final
         invalid_action_indices = [agente_entrenado.posibles_ubicaciones.index(loc) for loc in asignacion_final.values()]
         mask = np.zeros(agente_entrenado.action_size, dtype=bool)
         mask[invalid_action_indices] = True
