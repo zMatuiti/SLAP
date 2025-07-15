@@ -3,6 +3,11 @@ from genetic_optimizer import GeneticOptimizer
 from dqn_agent import train_dqn
 import random
 import matplotlib.pyplot as plt
+import numpy as np
+
+random.seed(17)
+np.random.seed(17)
+
 
 if __name__ == "__main__":
     # configuracion
@@ -39,26 +44,26 @@ if __name__ == "__main__":
     print("\n Ejecutando Algoritmo Genetico ")
     optimizador_ga = GeneticOptimizer(
         mi_almacen, poblacion=50, generaciones=50, prob_mutacion=0.1)
-    mejor_asignacion_ga = optimizador_ga.optimizar()
+    mejor_asignacion_ga, historial_ga = optimizador_ga.optimizar()
     mi_almacen.ubicaciones = mejor_asignacion_ga
     costo_genetico = mi_almacen.calcular_costo_total_simulacion()
     print(f"Costo final tras optimizacion con GA: {costo_genetico:.2f}")
 
-    # agente DQN 
+    # agente DQN
     print("\n Ejecutando Agente DQN ")
     # Descomenta las siguientes lineas y borra la del placeholder
-    asignacion_dqn = train_dqn(mi_almacen, episodios=100)
+    asignacion_dqn, historial_dqn = train_dqn(mi_almacen, episodios=100)
     mi_almacen.ubicaciones = asignacion_dqn
     costo_dqn = mi_almacen.calcular_costo_total_simulacion()
     print(f"Costo final tras optimizacion con DQN: {costo_dqn:.2f}")
 
-    # comparacion final 
+    # comparacion final
     print("\n\n COMPARACIoN DE RESULTADOS ")
     print(f"Costo Baseline Aleatorio: {costo_baseline:.2f}")
     print(f"Costo Algoritmo Genetico: {costo_genetico:.2f}")
     print(f"Costo DQN: {costo_dqn:.2f}")
 
-    # crea el grafico comparativo 
+    # crea el grafico comparativo
     metodos = ['Aleatorio', 'Algoritmo Genetico', 'DQN']
     costos = [costo_baseline, costo_genetico, costo_dqn]
 
