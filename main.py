@@ -1,6 +1,9 @@
 import pandas as pd
 import numpy as np
 import random
+import pyvista as pv
+from matplotlib import cm
+import matplotlib.colors as mcolors
 
 class Almacen:
     def __init__(self, dataset_pth, affinity_pth, num_racks, lenght_rack, height_rack, num_productos_populares):
@@ -8,10 +11,10 @@ class Almacen:
         
         # estructura fisica del almacen
         self.ancho = lenght_rack      # eje X
-        self.profundidad = num_racks  # eje Y
+        self.profundidad = num_racks * 2 - 1  # eje Y
         self.alto = height_rack       # eje Z
-        self.total_spaces = self.ancho * self.profundidad * self.alto
-        self.punto_io = (0, 0, 0)     # Punto de entrada/salida para el picking
+        self.x_corredor = 0           # Corredor principal en x=0 (o self.ancho - 1)
+        self.punto_io = (self.x_corredor, self.profundidad // 2, 0)  # Punto medio del corredor
         
         # Diccionario para guardar asignaciones: {'producto_id': (x, y, z)}
         self.ubicaciones = {}
@@ -61,6 +64,29 @@ class Almacen:
 
     def _calcular_distancia_manhattan(self, punto1, punto2):
         return sum(abs(p1 - p2) for p1, p2 in zip(punto1, punto2))
+    
+    def _calcular_distancia_realista(self, punto1, punto2):
+        """
+        Calcula la distancia que recorrería un trabajador usando pasillos.
+        Se asume:
+        - Movimiento vertical (z) se hace en el lugar.
+        - Para cambiar de fila (y), hay que volver al corredor (eje x fijo, por ejemplo x=0 o x=max).
+        """
+        x1, y1, z1 = punto1
+        x2, y2, z2 = punto2
+
+        if y1 == y2:
+            # Están en el mismo pasillo
+            distancia = abs(x1 - x2) + abs(z1 - z2)
+        else:
+            # Distancia hasta corredor (x fijo, ej. x=0), ida y vuelta
+            corredor_x = 0  # o self.ancho - 1
+            distancia = abs(x1 - corredor_x)  # salir del pasillo
+            distancia += abs(y1 - y2)         # caminar por corredor
+            distancia += abs(x2 - corredor_x) # entrar al nuevo pasillo
+            distancia += abs(z1 - z2)         # ajustar altura
+
+        return distancia
 
     def asignar_producto(self, producto_id, coordenadas):
         x, y, z = coordenadas
@@ -81,13 +107,53 @@ class Almacen:
             for producto_id in orden:
                 if producto_id in self.ubicaciones:
                     destino = self.ubicaciones[producto_id]
-                    distancia_orden += self._calcular_distancia_manhattan(punto_actual, destino)
+                    distancia_orden += self._calcular_distancia_realista(punto_actual, destino)
                     punto_actual = destino
 
-            distancia_orden += self._calcular_distancia_manhattan(punto_actual, self.punto_io)
+            distancia_orden += self._calcular_distancia_realista(punto_actual, self.punto_io)
             distancia_total += distancia_orden
 
         return distancia_total / len(self.ordenes_simulacion)
+    
+    def visualizar_almacen(self):
+        plotter = pv.Plotter()
+
+        # Dimensiones de cada cubo (rack)
+        dx, dy, dz = 1.0, 1.0, 1.0
+
+        # Generate a colormap for the products
+        productos = list(self.ubicaciones.keys())
+        colormap = cm.get_cmap('tab20', len(productos))  # Use a colormap with enough colors
+        norm = mcolors.Normalize(vmin=0, vmax=len(productos) - 1)
+
+        for x in range(self.ancho):
+            for y in range(0, self.profundidad, 2):
+                for z in range(self.alto):
+                    # Crear un cubo para cada posición del rack
+                    cubo = pv.Cube(center=(x + dx/2, y + dy/2, z + dz/2), x_length=dx, y_length=dy, z_length=dz)
+                    plotter.add_mesh(cubo, color='lightgray', opacity=0.1, show_edges=True)
+
+        # Agregar cubos por cada producto (racks)
+        for idx, (producto_id, (x, y, z)) in enumerate(self.ubicaciones.items()):
+            color = mcolors.to_hex(colormap(norm(idx)))  # Convert colormap value to hex color
+            cubo = pv.Cube(center=(x + dx/2, y + dy/2, z + dz/2), x_length=dx, y_length=dy, z_length=dz)
+            plotter.add_mesh(cubo, color=color, opacity=1.0, show_edges=True)
+
+        for y in range(self.profundidad):
+            base = pv.Cube(center=(-1 + dx/2, y + dy/2, 0), x_length=dx, y_length=dy, z_length=0.05)
+            plotter.add_mesh(base, color='yellow', opacity=1.0)
+            if y % 2 == 1:
+                for x in range(self.ancho):
+                    corredor = pv.Cube(center=(x + dx/2, y + dy/2, 0), x_length=dx, y_length=dy, z_length=0.05)
+                    plotter.add_mesh(corredor, color='yellow', opacity=1)
+
+
+        # Agregar punto de entrada/salida
+        x0, y0, z0 = self.punto_io
+        entrada = pv.Sphere(radius=0.2, center=(x0 + dx/2 - 1, y0 + dy/2, z0 + dz/2))
+        plotter.add_mesh(entrada, color='red')
+
+        plotter.show()
     
 class GeneticOptimizer:
     def __init__(self, almacen, poblacion=50, generaciones=100, prob_mutacion=0.1):
@@ -97,11 +163,17 @@ class GeneticOptimizer:
         self.generaciones = generaciones
         self.prob_mutacion = prob_mutacion
         self.posibles_ubicaciones = self._generar_posibles_ubicaciones()
+
+        if len(self.posibles_ubicaciones) < len(self.productos):
+            raise ValueError(
+                f"No hay suficientes ubicaciones disponibles ({len(self.posibles_ubicaciones)}) "
+                f"para asignar todos los productos ({len(self.productos)})."
+            )
     
     def _generar_posibles_ubicaciones(self):
         ubicaciones = []
         for x in range(self.almacen.ancho):
-            for y in range(self.almacen.profundidad):
+            for y in range(0, self.almacen.profundidad, 2):
                 for z in range(self.almacen.alto):
                     ubicaciones.append((x, y, z))
         return ubicaciones
@@ -118,18 +190,17 @@ class GeneticOptimizer:
 
         # 2. Costo de afinidad
         costo_afinidad = 0
-        productos = self.productos
         matriz = self.almacen.affinity
 
-        for i in range(len(productos)):
-            for j in range(i + 1, len(productos)):
-                p1, p2 = productos[i], productos[j]
+        for i in range(len(self.productos)):
+            for j in range(i + 1, len(self.productos)):
+                p1, p2 = self.productos[i], self.productos[j]
                 afinidad = matriz.loc[p1, p2] if p1 in matriz.columns and p2 in matriz.columns else 0
 
                 if afinidad > 0:
                     loc1 = individuo[p1]
                     loc2 = individuo[p2]
-                    distancia = self.almacen._calcular_distancia_manhattan(loc1, loc2)
+                    distancia = self.almacen._calcular_distancia_realista(loc1, loc2)
                     costo_afinidad += afinidad * distancia
 
         # Normalización simple por cantidad de pares
@@ -153,20 +224,26 @@ class GeneticOptimizer:
 
         for i in range(len(productos)):
             producto = productos[i]
-            if i < punto:
-                hijo[producto] = padre1[producto]
-            else:
-                hijo[producto] = padre2[producto]
+            hijo[producto] = padre1[producto] if i < punto else padre2[producto]
 
-        # Corregir duplicados
-        usadas = set(hijo.values())
+        usadas = list(hijo.values())
+        ubicaciones_unicas = set()
+        duplicados = []
+
+        for producto, loc in hijo.items():
+            if loc in ubicaciones_unicas:
+                duplicados.append(producto)
+            else:
+                ubicaciones_unicas.add(loc)
+
         faltantes = [loc for loc in self.posibles_ubicaciones if loc not in usadas]
 
-        ubicaciones_repetidas = [prod for prod, loc in hijo.items()
-                                 if list(hijo.values()).count(loc) > 1]
-
-        for producto in ubicaciones_repetidas:
-            hijo[producto] = faltantes.pop()
+        for producto in duplicados:
+            if faltantes:
+                hijo[producto] = faltantes.pop()
+            else:
+                # Asignación forzada para evitar crash
+                hijo[producto] = random.choice(self.posibles_ubicaciones)
 
         return hijo
 
@@ -225,3 +302,5 @@ if __name__ == "__main__":
 
     costo_final = mi_almacen.calcular_costo_total_simulacion()
     print(f"\nCosto final tras optimización: {costo_final:.2f}")
+
+    mi_almacen.visualizar_almacen()
